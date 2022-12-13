@@ -4,7 +4,7 @@ Metagenomics analysis of 280 faecal samples from swine treated with different an
 ## 1. Data Pre-processing
 
 ### 1.1 Raw Read Quality Analysis
-Raw reads are renamed with ids and relevant metadata for initial raw read quality analysis with FastQC and MultiQC software:
+Raw reads are renamed with ids and relevant metadata for initial raw read quality analysis with FastQC v0.11.9 and MultiQC v1.13 software:
 ```
 conda activate fastqc
 fastqc *.fastq.gz -o raw_fastqc_output/ -t 8
@@ -12,8 +12,8 @@ cd raw_fastqc_output/
 multiqc *.zip
 ```
 
-### 1.2 Host Decontamination and Trimming 
-After initial analysis of read quality, sequence counts, duplication levels, and adapter content, reads are host decontaminated using Bowtie2 and trimmed using Trimmomatic. 
+### 1.2 Host Decontamination and Trimming with kneaddata v0.10.0
+After initial analysis of read quality, sequence counts, duplication levels, and adapter content, reads are host decontaminated using Bowtie2 v2.4.4 and trimmed using Trimmomatic v0.39.2. 
 First, a Bowtie2 index must be created including the potential contaminant genomes. In this case, *Sus scrofa* (GCA_000003025.6_Sscrofa11.1) and *PhiX* bacteriophage genoems are downloaded and concatenated for index generation:
 ```
 $PATH = /scratch/jguitar/raw_data/all_files/
@@ -49,7 +49,7 @@ multiqc *.zip
 ## 2. Taxonomy Analyses 
 
 ### 2.1 Taxonomic Classification of Reads
-Kraken2 classifier is used for read taxonomic classification using the Maxikraken2 database from the trimmed fastq reads. This process is run twice to obtain output in MPA style and kraken report style:
+Kraken2 v2.1.2 classifier is used for read taxonomic classification using the Maxikraken2 database from the trimmed fastq reads. This process is run twice to obtain output in MPA style and kraken report style:
 ```
 conda activate kraken2
 cd /$PATH/kneaddata_output/kneaddata_paired/
@@ -128,6 +128,7 @@ tspecies_bacteria_subset$plot_heatmap(facet = "Visit/Group", xtext_keep = FALSE,
 From *alpha_diversity.csv* file obtained with Microeco, statistical analysis are performed to compare visits within groups and groups within visits. Here are the main tests performed, after subsetting data (complete output uploaded *group_visit_comparisons_ed.doc*)
 
 ```
+# In R:
 library(dplyr)
 library(tibble)
 library(ggplot2)
@@ -139,16 +140,87 @@ pairwise.wilcox.test(x = diversity$Shannon, g = diversity$Group, p.adjust.method
 pairwise.wilcox.test(x = diversity$Shannon, g = diversity$Visit, p.adjust.method = "BH")
 
 # One-way non-parametric ANOVA per group or visit
-kruskal.test(G1$Shannon ~ G1$Visit) # example
+kruskal.test(G1$Shannon ~ G1$Visit) # example with G1
 # Wilcoxon non-parametric t-test per group or visit
 pairwise.wilcox.test(x = G1$Shannon, g= G1$Visit, p.adjust.method = "BH")
+ggplot(G1, aes(x = Visit, y = Shannon)) + geom_boxplot() + ylim(3.30,4.30) 
+
+# Further analysis: NMDS plot from ANOSIM test and PCA plots from beta-diversity
+```
 
 ### 2.4 Multivariate Association Analysis with Maaslin2
+From abundance, taxonomy, and metadata tables from Microeco: 
+
+```
+# In R:
+library(Maaslin2)
+abundance <- t(abundance_table_bateria)
+abundance <- abundance[rownames(metadata2),]
+
+# Function to perform pre-filtering to keep only the feautures representing the 0.01% of the total abundance
+low.count.removal = function(data, # OTU count data frame of size n (sample) x p (OTU)
+                        percent=0.0001 # cutoff chosen) {
+    keep.otu = which(colSums(data)*100/(sum(colSums(data))) > percent)
+    data.filter = data[,keep.otu]
+    return(list(data.filter = data.filter, keep.otu = keep.otu)) 
+    
+# call the function then apply on the offset data 
+result.filter <- low.count.removal(abundance, percent=0.0001)
+input_data <- result.filter$data.filter
+
+# Example for G1 within visits
+input_metadataG1 <- subset(input_metadata, Group=='1')
+input_dataG1 <- input_data[rownames(input_metadataG1),]
+fit_data <- Maaslin2(input_dataG1, input_metadataG1, 'output_genus_groupG1',
+    fixed_effects = c('Visit'),
+    reference=c("Visit, V1"),
+    min_abundance=0,
+    #random_effects = c('Visit'),
+    analysis_method="LM",
+    max_significance = 0.1,
+    min_prevalence=0.15,
+    cores = 3,
+    normalization = 'CLR',
+    transform = 'NONE',
+    standardize = FALSE)
+```
+From *significant_results* files obtained from each group and each visit, matrixes are created in Excel. These matrixes are compared for significant differences observed between visits compared against all groups and between groups contrasting all visits. 
+
+**FALTA PHINCH???**
+
+
+# 3. Co-assembly and Pangenome Analyses (not finished)
+
+## 3.1 Co-assembly of reads with Megahit
+Assembly of trimmed reads from the same group and visit together with Megahit v1.0.2. Example for G1_V1, ids in '-1' and '-2' must be separated individually per commas:
+```
+conda activate assembly
+megahit -1 *_G1_V1_1_kneaddata_paired_1.fastq.gz -2 *_G1_V1_1_kneaddata_paired_2.fastq.gz
+        --min-contig-len 1000 -t 40 --k-min 127 -o coassembly/coassembly_k_G1_V1 --presets meta-large 
+```
+Main output is in *final.contigs.fa* which must be renamed for further analyses.
+
+## 3.2 Pangenome analysis (with anvi'o?)
+**FALTA AQUESTA PART**
+
+
+# 4. Assembly and Binning for MAG Generation 
+
+## 4.1 Assembly with SPAdes assembler
+
+
+## 4.2 Binning and Binning Refinement with MetaWrap
+
+
+
+
+# 5. Functional Annotation and Bin Taxonomy
 
 
 
 
 
+# 6. Resistance, Virulence, and Plasmid Identification
 
 
 
