@@ -7,9 +7,9 @@ Metagenomics analysis of 280 faecal samples from swine treated with different an
 Raw reads are renamed with ids and relevant metadata for initial raw read quality analysis with FastQC and MultiQC software:
 ```
 conda activate fastqc
-fastqc {file}.fastq.gz -o {output_dir}/ -t 8
-cd {output_dir}/
-multiqc {file}.zip
+fastqc *.fastq.gz -o raw_fastqc_output/ -t 8
+cd raw_fastqc_output/
+multiqc *.zip
 ```
 
 ### 1.2 Host Decontamination and Trimming 
@@ -24,25 +24,130 @@ bowtie2-build sscrofa11.1_phix.fasta > sscrofa11.1_phix.index
 Kneaddata software is used for host decontamination and trimming of low quality and adapter sequences with the following options:
 ```
 conda activate kneaddata
+name = $(echo $file | sed -e 's/_1.fastq.gz//g')
 kneaddata --remove-intermediate-output -t 16 
-          --input {file_name}_R1.fastq.gz --input {file_name}_R2.fastq.gz --output /$PATH/kneaddata_output 
+          --input {$name}_R1.fastq.gz --input {$name}_R2.fastq.gz --output /$PATH/kneaddata_output 
           --reference-db /$PATH/contaminant_genomes/Sscrofa11.1_phiX.index 
           --bowtie2-options "--very-sensitive --dovetail" 
           --trimmomatic /mnt/beegfs/scratch/jguitar/.conda/envs/kneaddata/share/trimmomatic-0.39-2/ 
           --trimmomatic-options "ILLUMINACLIP:adaptors.fa:2:30:10 SLIDINGWINDOW:4:20 MINLEN:50"
 kneaddata_read_count_table --input /$PATH/kneaddata_output/ --output kneaddata_read_counts.txt
 ```
-*kneaddata_read_counts.txt* is a summary file that contains the total reads included in each category of kneaddata (paired, unmatched, index_paired, index_unmatched) which allows for analysis of contamination levels.
+*kneaddata_read_counts.txt* is a summary file that contains the total reads included in each category of kneaddata (paired, unmatched, index_paired, index_unmatched) which allows for analysis of contamination levels. *Kneaddata_paried* files are saved in a separate folder for further analyses.
 
 ### 1.3 Trimmed Read Quality Analysis 
 After host decontamination and trimming, quality of trimm reads is again analysed with FastQC and MultiQC software: 
 ```
 conda activate fastqc
 cd /$PATH/kneaddata_output/
-fastqc *kneaddata_paired* -o {output_dir}/ -t 8
-cd {output_dir}/
-multiqc {file}.zip
+fastqc *kneaddata_paired* -o trim_reads_fastqc/ -t 8
+cd trim_reads_fastqc/
+multiqc *.zip
 ```
+
+
+## 2. Taxonomy Analyses 
+
+### 2.1 Taxonomic Classification of Reads
+Kraken2 classifier is used for read taxonomic classification using the Maxikraken2 database from the trimmed fastq reads. This process is run twice to obtain output in MPA style and kraken report style:
+```
+conda activate kraken2
+cd /$PATH/kneaddata_output/kneaddata_paired/
+name=$(echo $file | sed -e 's/_R1_kneaddata_paired_1.fastq//g')
+# mpa-style report run
+kraken2 --db /prod/apps/kraken/maxikraken2_1903_140GB/ --confidence 0.01 --threads 16 --use-names 
+        --report kraken_reports_mpa/${name}_report.txt --report-zero-counts --use-mpa-style --output kraken_outputs_mpa/${name}_output.txt 
+        --paired ${name}_R1_kneaddata_paired_1.fastq ${name}_R1_kneaddata_paired_2.fastq --unclassified-out unclassified_mpa/$name#.fq
+# kraken2-style report run
+kraken2 --db /prod/apps/kraken/maxikraken2_1903_140GB/ --confidence 0.01 --threads 16 --use-names 
+        --report kraken_reports/${name}_report.txt --report-zero-counts --output kraken_outputs/${name}_output.txt 
+        --paired ${name}_R1_kneaddata_paired_1.fastq ${name}_R1_kneaddata_paired_2.fastq --unclassified-out unclassified/$name#.fq
+```
+From run .err file, percentages of sequences classified and unclassified are extracted to analyse Kraken2 results.
+
+### 2.2 Abundance and Diversity Data Processing with Microeco 
+Taxonomy reports generated with kraken2 in a mpa-style format are used to generate abundance and taxonomy tables required for Microeco input.
+Here, there is a summary of the main functions of Microeco, including rarefaction (complete output uploaded in *microeco_rarefaction_ed.doc*):
+
+```
+# In R:
+library(microeco)
+library(magrittr)
+library(mecodev)
+library(tidyverse)
+
+# Upload abundance, taxonomy, and metadata tables
+microeco_tax_bacteria %<>% tidy_taxonomy()
+dataset_bacteria <- microtable$new(otu_table = microeco_abu_bacteria, sample_table = metadata, tax_table = microeco_tax_bacteria)
+dataset_bacteria_new
+dataset_bacteria_new$tidy_dataset()
+dataset_bacteria_new$sample_sums() %>%  range
+rarefaction <- trans_rarefy$new(dataset_bacteria, alphadiv = "Shannon", depth = c(0, 10, 50, 500, 2000, 4000, 6000, 8000))
+rarefaction$plot_rarefy(color_values = rep("grey", 279), show_point = TRUE, add_fitting = FALSE, show_legend = FALSE)
+
+# Calculation of taxa abundance and alpha and beta divesity
+dataset_bacteria$cal_abund()
+dataset_bacteria$save_abund(dirpath = "taxa_abund_bacteria")
+dataset_bacteria$cal_alphadiv(PD = FALSE)
+dataset_bacteria$save_alphadiv(dirpath = "alpha_diversity_bacteria")
+dataset_bacteria$cal_betadiv()
+dataset_bacteria$save_betadiv(dirpath = "beta_diversity_bacteria")
+
+# Comparison between groups and visits and plotting of alpha and beta diversity indexes
+ta_bacteria <- trans_alpha$new(dataset = dataset_bacteria, group = "Group/Visit")
+ta_bacteria$cal_diff(method = "anova")
+ta_bacteria$res_alpha_diff[1:6, ]
+ta_bacteria$plot_alpha(add_letter = T, measure = "Shannon", use_boxplot = TRUE)
+tb_bacteria <- trans_beta$new(dataset = dataset_bacteria, group = "Group/Visit", measure = "bray")
+tb_bacteria$cal_ordination(ordination = "PCoA")
+tb_bacteria$plot_ordination(plot_color = "Group/Visit", plot_shape = "Group/Visit", plot_group_ellipse = TRUE)
+
+# Statistical analysis
+tb_bacteria$cal_manova(cal_manova_all = TRUE)
+tb_bacteria$res_manova$aov.tab
+tb_bacteria$cal_manova(cal_manova_paired = TRUE)
+tb_bacteria$res_manova
+tb_bacteria$cal_manova(cal_manova_set = "Group + Visit")
+tb_bacteria$res_manova$aov.tab
+tb_bacteria$cal_betadisper()
+tb_bacteria$res_betadisper
+
+# More plots
+g1 <- tb_bacteria$plot_group_distance(distance_pair_stat = TRUE)
+subset_bacteria_phylum <- clone(dataset_bacteria)
+subset_bacteria_phylum$tax_table %<>% subset(Phylum != "p__Unassigned")
+tphylum_bacteria_subset <- trans_abund$new(dataset = subset_bacteria_phylum, taxrank = "Phylum", ntaxa = 12)
+tphylum_bacteria_subset$plot_bar(others_color = "grey70", facet = "Visit", facet2 = "Group",  xtext_keep = FALSE, legend_text_italic = FALSE) # exclude facet2 if necessary
+tspecies_bacteria_subset$plot_box(group = "Group/Viisit")
+tspecies_mean_bacteria_subset <- trans_abund$new(dataset = subset_bacteria_species, taxrank = "Species", ntaxa = 12, groupmean = "Group/Visit")
+tspecies_mean_bacteria_subset$plot_bar(xtext_keep = FALSE, legend_text_italic = FALSE) + theme_classic() + theme(axis.title.y = element_text(size = 18))
+tspecies_bacteria_subset$plot_heatmap(facet = "Visit/Group", xtext_keep = FALSE, withmargin = FALSE)
+```
+
+### 2.3 Statistical Analysis of Alpha Diversity Comparisons 
+From *alpha_diversity.csv* file obtained with Microeco, statistical analysis are performed to compare visits within groups and groups within visits. Here are the main tests performed, after subsetting data (complete output uploaded *group_visit_comparisons_ed.doc*)
+
+```
+library(dplyr)
+library(tibble)
+library(ggplot2)
+library(ggpubr)
+diversity  <- data.frame(metadata, index)
+
+# Wilcoxon non-parametric t-test for all data
+pairwise.wilcox.test(x = diversity$Shannon, g = diversity$Group, p.adjust.method = "BH")
+pairwise.wilcox.test(x = diversity$Shannon, g = diversity$Visit, p.adjust.method = "BH")
+
+# One-way non-parametric ANOVA per group or visit
+kruskal.test(G1$Shannon ~ G1$Visit) # example
+# Wilcoxon non-parametric t-test per group or visit
+pairwise.wilcox.test(x = G1$Shannon, g= G1$Visit, p.adjust.method = "BH")
+
+### 2.4 Multivariate Association Analysis with Maaslin2
+
+
+
+
 
 
 
