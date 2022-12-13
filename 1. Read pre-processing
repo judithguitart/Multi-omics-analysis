@@ -1,0 +1,10 @@
+1. Read pre-processing
+
+1.1 Raw reads quality analysis with FastQC
+
+# fastqc ...
+
+1.2 Host decontamination and Trimming with Kneaddata
+
+
+
