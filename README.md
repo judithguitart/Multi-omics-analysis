@@ -67,7 +67,7 @@ From run .err file, percentages of sequences classified and unclassified are ext
 
 ### 2.2 Abundance and Diversity Data Processing with Microeco 
 Taxonomy reports generated with kraken2 in a mpa-style format are used to generate abundance and taxonomy tables required for Microeco input.
-Here, there is a summary of the main functions of Microeco, including rarefaction (complete output uploaded in *microeco_rarefaction_ed.doc*):
+Here, there is a summary of the main functions of Microeco, including rarefaction (complete output uploaded in *microeco_rarefaction_ed.docx*):
 
 ```
 # In R:
@@ -125,7 +125,7 @@ tspecies_bacteria_subset$plot_heatmap(facet = "Visit/Group", xtext_keep = FALSE,
 ```
 
 ### 2.3 Statistical Analysis of Alpha Diversity Comparisons 
-From *alpha_diversity.csv* file obtained with Microeco, statistical analysis are performed to compare visits within groups and groups within visits. Here are the main tests performed, after subsetting data (complete output uploaded *group_visit_comparisons_ed.doc*)
+From *alpha_diversity.csv* file obtained with Microeco, statistical analysis are performed to compare visits within groups and groups within visits. Here are the main tests performed, after subsetting data (complete output uploaded *group_visit_comparisons_ed.docx*)
 
 ```
 # In R:
@@ -207,7 +207,21 @@ Main output is in *final.contigs.fa* which must be renamed for further analyses.
 # 4. Assembly and Binning for MAG Generation 
 
 ## 4.1 Assembly with SPAdes assembler
-
+The metaspades.py script from SPAdes version 3.15.5 is used to assembly fastq files of paired reads with the following options: 
+```
+conda activate assembly
+metaspades.py --only-assembler -1 ${name}_R1_kneaddata_paired_1.fastq -2 ${name}_R1_kneaddata_paired_2.fastq -o assembly/${name}_assembly
+for i in `dir *_assembly/scaffolds.fasta`; do name=$(echo $i | sed "s/assembly\///"); cp $i /$PATH/scaffolds/$name; done
+```
+After running all assemblies, the for loop modifies each *scaffolds.fasta* file with the name id and copies them to a new directory containing all scaffolds. In this directory all fasta files are checked for quality with metaQUAST and CheckM using the following scripts:
+```
+conda activate recycler
+metaquast.py --threads 20 --label=name_1,$name_2,$name_3.... $name_1_scaffolds.fasta $name_2_scaffolds.fasta $name_3_scaffolds.fasta 
+```
+```
+conda activate checkm
+checkm lineage_wf -t 36 -x fasta /$PATH/kneaddata_paired/scaffolds/{input} /$PATH/kneaddata_paired/scaffolds/checkm_results/{output}
+```
 
 ## 4.2 Binning and Binning Refinement with MetaWrap
 
