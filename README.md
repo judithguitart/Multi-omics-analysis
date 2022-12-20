@@ -218,13 +218,24 @@ After running all assemblies, the for loop modifies each *scaffolds.fasta* file 
 conda activate recycler
 metaquast.py --threads 20 --label=name_1,$name_2,$name_3.... $name_1_scaffolds.fasta $name_2_scaffolds.fasta $name_3_scaffolds.fasta 
 ```
+**CheckM here think should be excluded, is for bins**
 ```
-conda activate checkm
+conda activate checkm 
 checkm lineage_wf -t 36 -x fasta /$PATH/kneaddata_paired/scaffolds/{input} /$PATH/kneaddata_paired/scaffolds/checkm_results/{output}
 ```
 
-## 4.2 Binning and Binning Refinement with MetaWrap
-
+## 4.2 Binning and Binning Refinement with MetaWRAP
+For this section, the MetaWRAP software is implemented in its version v1.3. The first implemented module is the MetaWRAP Binning module with CONCOCT, MaxBin, and metaBAT2 together. Before running the binning, it is necessary to fix the trimmed fastq files to make them readable for the MetaWRAP software. 
+```
+conda activate metawrap-env
+repair.sh in1=${name}_1_kneaddata_paired_1.fastq in2=${name}_1_kneaddata_paired_2.fastq 
+          out1=fixed_fastq/${name}_fixed_1.fastq out2=fixed_fastq/${name}_fixed_2.fastq 
+          outsingle=fixed_fastq/${name}_single.fastq
+metawrap binning -o binning_results/${name}_binning -t 96 -a ${name}_scaffolds.fasta 
+                 --metabat2 --maxbin2 --concoct               
+                 fixed_fastq/${name}_fixed_1.fastq fixed_fastq/${name}_fixed_2.fastq
+```
+Tip: for this module, create or move binning_results/ and fixed_fastq/ directories before running inside the directory where the *_scaffolds.fasta* files are saved.
 
 
 
