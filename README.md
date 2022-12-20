@@ -236,5 +236,42 @@ checkm lineage_wf -t 36 -x fasta /$PATH/kneaddata_paired/scaffolds/{input} /$PAT
 
 # 6. Resistance, Virulence, and Plasmid Identification
 
+## 6.1 Antibiotic Resistance and Virulence genes identification with ABRicate
+From assembled scaffolds obtained using metaSPAdes, ABRicate v1.0.1 is used to screen for antimicrobial resistance and virulence genes. The chosen databases are CARD, NCBI, and VFDB. Before launching ABRicate, *.fasta* extension must be changed to *.fa* to make files readable by ABRicate software.
+```
+rename .fasta.fa .fa *.fasta
+conda activate abricate
+abricate ${name}_scaffolds.fa --db card > /$PATH/kneaddata_paired/scaffolds_oct/abricate_scaffolds/abricate_card/${name}_card.tab
+cd abricate_card/
+abricate --summary *.tab > card_report.tab
+abricate ${name}_scaffolds.fa --db ncbi > /$PATH/kneaddata_paired/scaffolds_oct/abricate_scaffolds/abricate_ncbi/${name}_ncbi.tab
+cd abricate_ncbi/
+abricate --summary *.tab > ncbi_report.tab
+abricate ${name}_scaffolds.fa --db vfdb > /$PATH/kneaddata_paired/scaffolds_oct/abricate_scaffolds/abricate_vfdb/${name}_vfdb.tab
+cd abricate_vfdb/
+abricate --summary *.tab > vfdb_report.tab
+```
+These reports are downloaded and analysed in Excel to generate a presence/absence matrix with the percentage of coverage. 
+
+**FURTHER ANALYSIS MISSING**: matrix presence/absence to be uploaded in R and analyse with metadata and compare number of resistance and/or number of types of resistance between different groups and visits. 
+
+## 6.2 Plasmid assembly and identification with metaplasmidSPAdes
+The chosen software for plasmid assembly from *.fastq* files is SPAdes version 3.15.5. It appeared to be more efficient than SCAPP, and web-based software like PLSDB did not support large metagenomics files. This is the script implemented with the following identification of plasmid scaffolds using BLAST software:
+```
+conda activate assembly
+metaplasmidspades.py -t 48 --only-assembler 
+                     -1 ${name}_R1_kneaddata_paired_1.fastq -2 ${name}_R1_kneaddata_paired_2.fastq 
+                     -o /$PATH/kneaddata_paired/plasmid_assembly/${name}_plasmid
+for i in `dir *_plasmid/scaffolds.fasta`; do name=$(echo $i | sed "s/plasmid\///"); cp $i /$PATH/plasmid_scaffolds/$name; done
+conda deactivate
+conda activate blast/2.13
+blastn -task megablast -db nt -query ${name}_plasmid_scaffolds.fasta -out ${name}_plasmidspades.blast -evalue 1e-06 
+       -outfmt "6 qseqid sseqid slen qstart qend length evalue score pident nident mismatch qcovs stitle sseq" 
+       -max_target_seqs 5 -perc_identity 95 -num_threads $SLURM_CPUS_PER_TASK
+```
+
+
+
+
 
 
