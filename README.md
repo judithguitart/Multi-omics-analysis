@@ -273,7 +273,7 @@ conda activate assembly
 metaplasmidspades.py -t 48 --only-assembler 
                      -1 ${name}_R1_kneaddata_paired_1.fastq -2 ${name}_R1_kneaddata_paired_2.fastq 
                      -o /$PATH/kneaddata_paired/plasmid_assembly/${name}_plasmid
-for i in `dir *_plasmid/scaffolds.fasta`; do name=$(echo $i | sed "s/plasmid\///"); cp $i /$PATH/plasmid_scaffolds/$name; done
+for i in `dir *_plasmid/scaffolds.fasta`; do name=$(echo $i | sed "s/\//_/"); cp $i /$PATH/plasmid_scaffolds/$name; done
 conda deactivate
 conda activate blast/2.13
 blastn -task megablast -db nt -query ${name}_plasmid_scaffolds.fasta -out ${name}_plasmidspades.blast -evalue 1e-06 
