@@ -177,21 +177,105 @@ From *significant_results* files obtained from each group and each sampling time
 
 
 ## 3. Resistome characterization
+From trimmed metagenomic reads, Resfinder is used for resistome characterization. Resfinder v4.2.5 software is chosen because it offers the possibility to obtain quantification of reads mapping against the Resfinder database with the output json file. 
+```bash
+conda activate resfinder
+for file in *; do
+          if [[ "$file" == *_fixed_1.fastq ]] ; then
+          name=$(echo $file | sed -e 's/_fixed_1.fastq//g')
+          echo $name
+          python3 -m resfinder -ifq ${name}_fixed_1.fastq ${name}_fixed_2.fastq -o /mnt/beegfs/scratch/lmigura/final_dataset/repeat_resfinder/${name}_repeat_resfinder -j /mnt/beegfs/scratch/lmigura/final_dataset/repeat_resfinder/${name}_resfinder.json -acq
+	fi
+done
+```
+To obtain sequencing depth of each ARG identified from the each sample's json file, the following JavaScript code was developed to obtain a matrix of sequencing depths per ARG and sample:
+```JS
+const fs = require('fs');
+const globalDictionaryResult = {};
+const globalAllGenes = [];
+let globalCount = 0;
+function init() {
+    fs.readdir('./json_files/', (err, listOfFiles) => {
+        for (file of listOfFiles) {
+            if (file.endsWith('.json')) {
+                var fileWithoutSufix = file.replace('.json', '');
+                console.log('file to execute ', fileWithoutSufix);
+                readFileAndWriteOutput(fileWithoutSufix, () => {
+                    globalCount++;
+                    if (globalCount === listOfFiles.length) {
+                        var finalMatrix = [];
+                        globalAllGenes.sort((genA, genB) => genA.localeCompare(genB))
+                        finalMatrix.push(['Name', ...globalAllGenes].join('\t'));
+                        Object.entries(globalDictionaryResult).forEach(([key, value]) => {
+                            const matrixLine = [key];
+                            for (gene of globalAllGenes) {
+                                if (value[gene]) {
+                                    matrixLine.push(value[gene])
+                                } else {
+                                    matrixLine.push('-')
+                                }
+                            }
+                            finalMatrix.push(matrixLine.join('\t'));
+                        })
+                        writeInFile('superMatrix_metaG.tsv', finalMatrix.join('\n'))
+                    }
+                });
+            }
+        }
+    })
+}
+function writeInFile(outputFileName, text) {
+    fs.open(outputFileName, "a", (err, fd)=>{
+        if (err){
+            console.log('Error writing in' + outputFileName + '\n' + err.message);
+            return;
+        }
+        fs.write(fd, text, (err) => {
+            if (err) {
+                console.log('Error writing in' + outputFileName + '\n' + err.message)
+            }
+        })
+    })
+}
+function readFileAndWriteOutput(inputFilename, cb) {
+    fs.readFile('./json_files/' + inputFilename + '.json', 'utf8', (error, data) => {
+        if (error) {
+            console.log(error);
+            return;
+        }
+        var fileID = inputFilename.replace('_resfinder', '');
+        var parsedJSON = JSON.parse(data).seq_regions;
 
-**FALTA**
-
+        globalDictionaryResult[fileID] = {};
+    
+        Object.values(parsedJSON).forEach((value) => {
+            if (globalDictionaryResult[fileID][value.name]) {
+                globalDictionaryResult[fileID][value.name] += value.depth;
+            } else {
+                globalDictionaryResult[fileID][value.name] = value.depth;
+            }
+            if (globalAllGenes.indexOf(value.name) === -1) {
+                globalAllGenes.push(value.name);
+            }
+        })
+        cb();
+    })
+}
+init();
+```
+The *'superMatrix_metaG.tsv'* file is then analysed in Excel for normalization by the total number of reads per sample and calculated in parts per million (PPM) and summed per antibiotic class for further statistical analyses. 
 
 
 ## 4. Binning stratey
 
 ### 4.1 Single sample assemblies (SA)
-The metaspades.py script from SPAdes version 3.15.5 is used to assembly fastq files of paired reads with the following options: 
+The metaspades.py script from SPAdes version 3.15.5 is used to assembly fastq files of trimmed paired reads with the following options: 
 ```bash
 conda activate assembly
 metaspades.py --only-assembler -1 ${name}_R1_kneaddata_paired_1.fastq -2 ${name}_R1_kneaddata_paired_2.fastq -o assembly/${name}_assembly
 for i in `dir *_assembly/scaffolds.fasta`; do name=$(echo $i | sed "s/assembly\///"); cp $i /$PATH/scaffolds/$name; done
 ```
-After running all assemblies, the for loop modifies each *scaffolds.fasta* file with the name id and copies them to a new directory containing all scaffolds. In this directory all fasta files are checked for quality with metaQUAST and CheckM using the following scripts:
+After running all assemblies, the for loop modifies each *scaffolds.fasta* file with the name id and copies them to a new directory containing all scaffolds. In this directory all fasta files are checked for quality with metaQUAST using the following script:
 ```bash
 conda activate recycler
 metaquast.py --threads 20 --label=name_1,$name_2,$name_3.... $name_1_scaffolds.fasta $name_2_scaffolds.fasta $name_3_scaffolds.fasta 
@@ -218,23 +302,45 @@ metawrap binning -o binning_results/${name}_binning -t 96 -a ${name}_scaffolds.f
                  fixed_fastq/${name}_fixed_1.fastq fixed_fastq/${name}_fixed_2.fastq
 ```
 Tip: for this module, create or move binning_results/ and fixed_fastq/ directories before running inside the directory where the *_scaffolds.fasta* files are saved. 
-The same script is performed for co-assemblies, but only including MaxBin2 and MetaBAT2 tools due to computational requirements. Then, the refinement module of MetaWRAP is applied to all bins obtained from single assemblies and the two sets of bins from co-assemblies frome each tool (MaxBin2 and MetaBAT2) with a minimum completeness of 70% and a maximum contamination of 10%:
+The same script is performed for co-assemblies, but only including MaxBin2 and MetaBAT2 tools due to computational requirements. Then, the refinement module of MetaWRAP is applied to all bins obtained from single assemblies first, and refined bins from single assemblies are then refined with the two sets of bins from co-assemblies frome each tool (MaxBin2 and MetaBAT2) with a minimum completeness of 70% and a maximum contamination of 10%:
 ```bash
-**BUSCAR**
+conda activate metawrap-env
+metawrap bin_refinement -o binning_results/${name}_binning/${name}_refinement -t 96 -A binning_results/${name}_binning/concoct_bins -B binning_results/${name}_binning/maxbin2_bins -C binning_results/${name}_binning/metabat2_bins -c 70 -x 10
+# Single assemblies refinement results are then moved to a new folder per treatment group and sampling time named *'GX_STX_binning/GX_STX_bins/'* to be refined with the two sets of bins from co-assemblies:
+metawrap bin_refinement -o binning_results/*GX_STX*_binning/*GX_STX*_refinement -t 96 -A binning_results/GX_STX_binning/GX_STX_bins/ -B binning_results/GX_STX_binning/coassembly_maxbin2_bins -C binning_results/GX_STX_binning/coassembly_metabat2_bins -c 70 x 10
 ```
-Final total bins quality is checked with the CheckM software v1.2.0:
+From *'metawrap_70_10.stats'* files, completeness and contamination means are analysed, as well as taxonomic assginments. Bins quality is also checked with the CheckM software v1.2.0:
 ```bash
 conda activate checkm 
 checkm lineage_wf -t 36 -x fasta /$PATH/kneaddata_paired/scaffolds/{input} /$PATH/kneaddata_paired/scaffolds/checkm_results/{output}
 ```
 
 
+## 5. Metagenome-Assembled Genomes (MAG) as a reference database
 
-## 5. Metagenome-Assembled Genomes as a reference database
+### 5.1 De-replication and quality analysis
+From the total 17698 bins generated in the previous step, the dRep v3.4.5 software is used to remove repeated genomes and CheckM and CoverM v0.7.0 are used for quality analysis.
+```bash
+conda activate drep
+dRep dereplicate drep_output/ -p 16 -comp 70 -con 10 -g {all_bins}.fa
+conda deactivate
+conda activate checkm
+checkm lineage_wf -t 16 -x fa $PATH/dereplicated_bins/ $PATH/dereplicated_bins_checkm
+conda deactivate
+conda activate activate coverM
+coverm genome --threads 4 -x fa --genome-fasta-directory $PATH/dereplicated_bins/ --methods relative_abundance mean length variance count --min-covered-fraction 0
+conda deactivate
+```
 
-drep
-checkm and coverm
-phylophlan
+### 5.3 Phylogeny 
+From final MAG catalogue, a phylogenetic tree is generated with PhyloPhlan v3.1.68 with the phylophlan database and following options: 
+```bash
+conda activate phylophlan
+phylophlan -i dereplicated_bins -d phylophlan -t a --databases_folder phylophlan_bins/databases/ --diversity high -f supermatrix_aa.cfg --nproc 8 --verbose --force_nucleotides --genome_extension ".fa"
+raxmlHPC-PTHREADS-SSE3 -p 1989 -m PROTCATLG -T 8 -t dereplicated_bins_phylophlan/dereplicated_bins_resolved.tre -w /mnt/beegfs/scratch/lmigura/metatranscriptomics/bins_annotation/dereplicated_bins_phylophlan -s dereplicated_bins_phylophlan/dereplicated_bins_concatenated.aln -n dereplicated_bins_refined.tre 
+
+
+
 taxnomy annotation with dram and distill R
 rsefinder from mags as well
 
