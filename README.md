@@ -5,7 +5,7 @@ Metagenomics analysis of 280 faecal samples from swine treated with different an
 
 ### 1.1 Raw Read Quality Analysis
 Raw reads are renamed with ids and relevant metadata for initial raw read quality analysis with FastQC v0.11.9 and MultiQC v1.13 software:
-```
+```bash
 conda activate fastqc
 fastqc *.fastq.gz -o raw_fastqc_output/ -t 8
 cd raw_fastqc_output/
@@ -22,7 +22,7 @@ cat GCA_000003025.6_Sscrofa11.1.fasta phix.fasta > sscrofa11.1_phix.fasta # in a
 bowtie2-build sscrofa11.1_phix.fasta > sscrofa11.1_phix.index
 ```
 Kneaddata software is used for host decontamination and trimming of low quality and adapter sequences with the following options:
-```
+```bash
 conda activate kneaddata
 name = $(echo $file | sed -e 's/_1.fastq.gz//g')
 kneaddata --remove-intermediate-output -t 16 
@@ -37,7 +37,7 @@ kneaddata_read_count_table --input /$PATH/kneaddata_output/ --output kneaddata_r
 
 ### 1.3 Trimmed Read Quality Analysis 
 After host decontamination and trimming, quality of trimm reads is again analysed with FastQC and MultiQC software: 
-```
+```bash
 conda activate fastqc
 cd /$PATH/kneaddata_output/
 fastqc *kneaddata_paired* -o trim_reads_fastqc/ -t 8
