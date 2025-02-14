@@ -337,24 +337,156 @@ From final MAG catalogue, a phylogenetic tree is generated with PhyloPhlan v3.1.
 ```bash
 conda activate phylophlan
 phylophlan -i dereplicated_bins -d phylophlan -t a --databases_folder phylophlan_bins/databases/ --diversity high -f supermatrix_aa.cfg --nproc 8 --verbose --force_nucleotides --genome_extension ".fa"
-raxmlHPC-PTHREADS-SSE3 -p 1989 -m PROTCATLG -T 8 -t dereplicated_bins_phylophlan/dereplicated_bins_resolved.tre -w /mnt/beegfs/scratch/lmigura/metatranscriptomics/bins_annotation/dereplicated_bins_phylophlan -s dereplicated_bins_phylophlan/dereplicated_bins_concatenated.aln -n dereplicated_bins_refined.tre 
+```
 
+### 5.4 Taxonomy and functional annotation
+For taxonomy and functional annotation of final MAGs, GTDB-Tk v2.0.1 and DRAM v1.5.0 are used, respectively:
+```bash
+conda activate GTDBTK-1.5.0
+gtdbtk classify_wf --genome_dir dereplicated_bins/ --out_dir MAGs_gtdbk.dir -x *.fa --cpus X
+```
+```bash
+conda activate DRAM_15
+prokka --outdir prokka_bins_annotation *.fa
+cd prokka_bins_annotation/
+cat *.faa > annotation_file.faa
+DRAM.py annotate --use_uniref -i annotation_file.faa --threads 20 -o dram_annotation
+```
+From the output annotation table, gene ids per fasta file of each bin is filtered together with each KO_id and KEGG_id. This 'MAGs_KO_filtered' table is used to transfrom annotations into multiple Genome Inferred Functional Traits (GIFTs) using the distillR package from R:
+```R
+library(tidyverse)
+library(devtools)
+library(distillR)
+library(Rtsne)
+library(patchwork)
+library(viridis)
+library(Polychrome)
+library(broom)
+library(dplyr)
+library(tibble)
+library(Rtsne)
+library(ggplot2)
+library(viridis)
 
+#Load the Annotation table
+SMGAtoGIFTs <- MAGs_KO_filtered %>%
+  select(GENE,fasta,ko_id)
+GIFTs <- distill(SMGAtoGIFTs,GIFT_db,genomecol=2,annotcol=3)
+#Aggregate bundle-level GIFTs into the compound level
+GIFTs_elements <- to.elements(GIFTs,GIFT_db)
+#Aggregate element-level GIFTs into the function level
+GIFTs_functions <- to.functions(GIFTs_elements,GIFT_db)
+#Aggregate function-level GIFTs into overall Biosynthesis, Degradation and Structural GIFTs
+GIFTs_domains <- to.domains(GIFTs_functions,GIFT_db)
+avg_mci <- rowMeans(GIFTs_functions) %>%
+  enframe(name = "Genome",value = "MCI")
 
-taxnomy annotation with dram and distill R
-rsefinder from mags as well
+Metadata <- metadata %>%
+  select(Genome,phylum,order,tax) %>%
+  distinct(Genome,.keep_all = T)
+#Join the tables
+avg_mci_Meta <- avg_mci %>%
+  left_join(Metadata,by="Genome")
 
+####Get the heatmap
+Elements <- GIFT_db %>%
+  select(Code_element,Domain, Function)
+GIFTs_elements %>%
+  pheatmap::pheatmap(cluster_cols = F)
+#Add taxonomy to this table
+GIFTs_W_Tax <- as_tibble(GIFTs_elements,rownames = NA) %>% 
+  rownames_to_column("Genome")  %>%
+  left_join(Metadata,by="Genome")
+GIFTSannotCol <- Elements %>%
+  select(Code_element,Function) %>%
+  distinct() %>%
+  column_to_rownames("Code_element")
+GIFTSTaxAnnot <- GIFTs_W_Tax %>%
+  select(Genome,phylum) %>%
+  column_to_rownames("Genome")
+ColorAnnot <- list(phylum=(Metadata %>%
+                            select(phylum) %>%
+                            distinct() %>%
+                            mutate(Color=c(paletteer_dynamic("cartography::pastel.pal", 20),"#F7B6D2","#C7C7C7","#DBDB8D","#9EDAE5")) %>%
+                            deframe()),
+                   Function=(Elements %>%
+                               select(Function) %>%
+                               distinct() %>%
+                               mutate(Color=rev(c(paletteer_dynamic("cartography::pastel.pal", 20),"#A174A2"))) %>%
+                               deframe()))
+Color <- rev(paletteer_c("grDevices::Purple-Blue", 10))
+GIFTsElementsPH_p <- GIFTs_elements %>%
+  pheatmap::pheatmap(cluster_cols = F,
+                     color = Color,
+                     annotation_col = GIFTSannotCol, annotation_colors=ColorAnnot,
+                     annotation_row = GIFTSTaxAnnot,
+                     show_colnames = F,
+                     show_rownames = F)
+ggsave(GIFTsElementsPH_p, file="GIFTsElementsPH_p2.pdf", width = 12, height = 12)
+```
+ARGs from final MAGs are also analysed with Resfinder v4.3.0:
+```bash
+conda activate resfinder
+for file in *; do
+	if [[ "$file" == *.fa ]] ; then
+    name=$(echo $file | sed -e 's/.fa//g')
+    echo $name 
+		python3 -m resfinder -ifa ${name}.fa -o /mnt/beegfs/scratch/lmigura/metatranscriptomics/bins_annotation/dereplicated_bins/resfinder_bins/${name}_resfinder -j /mnt/beegfs/scratch/lmigura/metatranscriptomics/bins_annotation/dereplicated_bins/resfinder_bins/${name}_resfinder.json -acq
+	fi
+done
+```
 
 
 ## 6. Pre-processing of metatranscriptomics data and mapping
-kneaddata
-sortmerna
+Raw metatranscriptomic reads are renamed with ids and relevant metadata and filtered with the Kneaddata v0.12.0 software. Again, *Sus scrofa* (GCA_000003025.6_Sscrofa11.1) and *PhiX* bacteriophage genomes are filtered as contaminant genomes:
+```bash
+conda activate kneaddata
+for file in *; do
+	if [[ "$file" == *_1P.fastq.gz ]] ; then
+		name=$(echo $file | sed -e 's/_1P.fastq.gz//g')
+		echo $name
+		kneaddata --remove-intermediate-output -t 16 --input ${name}_1P.fastq.gz --input ${name}_2P.fastq.gz --output $PATH/kneaddata_output --reference-db $PATH/contaminant_genomes/ --bowtie2-options "--very-sensitive --dovetail" --trimmomatic /.conda/envs/kneaddata/share/trimmomatic-0.39-2/ --trimmomatic-options "ILLUMINACLIP:adaptors.fa:2:30:10 SLIDINGWINDOW:4:20 MINLEN:50"
+	fi
+done
+kneaddata_read_count_table --input $PATH/kneaddata_output/ --output kneaddata_read_count_table.tsv
+column -t -s $'\t' kneaddata_read_count_table.tsv > kneaddata_read_counts.txt
+```
+The *kneaddata_read_count_table* utility allows for quality analysis of trimmed, decontaminated, and final paired reads.
+Then, ribosomal RNA is removed with SortMeRNA v4.3.6 with Rfam and Silva databases with the following options:
+```bash
+conda activate sortmerna
+for file in *; do
+	if [[ "$file" == *_1P.fastq.gz ]] ; then
+		name=$(echo $file | sed -e 's/_1P.fastq.gz//g')
+		echo $name
+		sortmerna --workdir kneaddata_output/ --out2 --paired_out --fastx --other /out/$input.noSalmon.noRNA --threads 12 --ref rRNA_databases/silva-bac-16s-id90.fasta --ref rRNA_databases/silva-arc-16s-id95.fasta --ref rRNA_databases/silva-bac-23s-id98.fasta --ref rRNA_databases/silva-arc-23s-id98.fasta --ref rRNA_databases/silva-euk-18s-id95.fasta --ref rRNA_databases/silva-euk-28s-id98.fasta --ref rRNA_databases/rfam-5.8s-database-id98.fasta --ref rRNA_databases/rfam-5s-database-id98.fasta --reads ${name}_1.fastq.gz --reads ${name}_2.fastq.gz
+```
 
 
 ## 7. Transcript abundances and differential expression analyses
+Then, trimmed and decontaminated reads are pseudoaligned for transcript abundance quantification with the Kallisto v0.50.1 software, using the annotation file from the MAGs catalogue:
+```bash
+conda activate kallisto
+kallisto index --index=kallisto_index annotation_file.ffn -t 32
+for file in *; do
+	if [[ "$file" == *_1P.fastq.gz ]] ; then
+		name=$(echo $file | sed -e 's/_1P.fastq.gz//g')
+		echo $name
+		kallisto quant -i kallisto_index.indx --plaintext ${name}_1P.fastq.gz ${name}_2P.fastq.gz -t 32 -o ${name}.kallisto_index.indx.dir
+# Join abundance kallisto tables from all samples:
+paste *.kallisto_index.indx.dir/abundance.tsv | cut -f 1,2,5,10,15,20,25,30 > transcript_tpms_all_samples.tsv
+ls -1 */abundance.tsv | perl -ne 'chomp $_; if ($_ =~ /(\S+)\/abundance\.tsv/){print "\t$1"}' | perl -ne 'print "target_id\tlength$_\n"' > header.tsv
+cat header.tsv transcript_tpms_all_samples.tsv | grep -v "tpm" > transcript_tpms_all_samples.tsv2
+mv transcript_tpms_all_samples.tsv2 transcript_tpms_all_samples.tsv
+rm -f header.tsv
+```
+Differential abundance analysis is performed with DESeq2:
 
-kallisto
-deseq2
+
+for file in *.csv; do
+    name=$(echo $file | cut -d '_' -f1-2)
+    grep -E "baseMean|resistan|antibiotic|antimicrobial|colistin|cillin|efflux|pump|drug|multi|lactam|cyclin|macrolid|midazol|penem|cepha|quinolon|mycin|polypeptid|sulfonamid|phenicol" ${name}_final.csv > ${name}_filtered.csv
+done
 
 ## 8. Expressed Resistome characterization
 
