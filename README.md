@@ -473,14 +473,110 @@ for file in *; do
 		name=$(echo $file | sed -e 's/_1P.fastq.gz//g')
 		echo $name
 		kallisto quant -i kallisto_index.indx --plaintext ${name}_1P.fastq.gz ${name}_2P.fastq.gz -t 32 -o ${name}.kallisto_index.indx.dir
-# Join abundance kallisto tables from all samples:
+# Join abundance kallisto tables from all samples and extract tpms (sequence of 5,10,15,20...) or counts (sequence of 4,9,14,19...). Example for tpms: 
 paste *.kallisto_index.indx.dir/abundance.tsv | cut -f 1,2,5,10,15,20,25,30 > transcript_tpms_all_samples.tsv
 ls -1 */abundance.tsv | perl -ne 'chomp $_; if ($_ =~ /(\S+)\/abundance\.tsv/){print "\t$1"}' | perl -ne 'print "target_id\tlength$_\n"' > header.tsv
 cat header.tsv transcript_tpms_all_samples.tsv | grep -v "tpm" > transcript_tpms_all_samples.tsv2
 mv transcript_tpms_all_samples.tsv2 transcript_tpms_all_samples.tsv
 rm -f header.tsv
 ```
-Differential abundance analysis is performed with DESeq2:
+For differential expression analyses, the table containing counts is used as DESeq2 uses raw counts and performs normalization:
+```R
+library("readr")
+library("DESeq2")
+library("ggplot2")
+library("ggrepel")
+
+cts_4out <- read_csv("cts_4out.csv")
+coldata_4out <- read_csv("coldata_4out.csv")
+head(coldata_4out)
+gene_ids <- read_delim("gene_ids3.tab", delim = "\t", escape_double = FALSE, trim_ws = TRUE)
+cts_4out <- data.frame(cts_4out, row.names = 1, check.names = FALSE)
+cts_4out <- round(cts_4out)
+coldata_4out <- data.frame(coldata_4out, row.names = 1)
+row.names(coldata_4out)
+colnames(cts_4out)
+all(rownames(coldata_4out) == colnames(cts_4out))
+# Analysis with 'Group_Visit' variable:
+dds_4out <- DESeqDataSetFromMatrix(countData = cts_4out, colData = coldata_4out, design = ~ Group_Visit + ID_mother)
+keep_4out <- rowSums(counts(dds_4out)) >= 10
+dds_4out <- dds_4out[keep_4out,]
+dds_4out <- DESeq(dds_4out)
+save(dds_4out, file = "DESeqData_4out.rda")
+vsd_4out <- vst(dds_4out)
+save(vsd_4out, file = "vsd_4out.rda")
+pcaData_4out <- plotPCA(vsd_4out, intgroup=c("Group","Visit"), returnData = TRUE)
+percentVar_4out <- round(100*attr(pcaData_4out, "percentVar"))
+ggplot(pcaData_4out, aes(PC1,PC2, color=Group, shape=Visit)) + 
+  geom_point(size = 3, stroke = 1.2) + scale_shape_manual(values=c(2,4,0)) +
+  xlab(paste0("PC1: ",percentVar_4out[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar_4out[2],"% variance")) +
+  coord_fixed()
+ggsave("PCA_counts_4out.png")
+write.csv(pcaData_4out, "pcaData_4out.csv")
+
+#Example of differential expression analyses between G2 and G1 at ST1:
+resST1_G2vsG1 <- results(dds_4out, contrast=c("Group_Visit","G2_ST1","G1_ST1"))
+resST1_G2vsG1_ord <- resST1_G2vsG1[order(resST1_G2vsG1$pvalue),]
+resST1_G2vsG1_sig <- subset(resST1_G2vsG1_ord, padj < 0.05)
+summary(resST1_G2vsG1_sig)
+head(resST1_G2vsG1_sig)
+resST1_G2vsG1_df <- data.frame(genes=rownames(resST1_G2vsG1_sig), resST1_G2vsG1_sig, row.names = NULL)
+modify_ids <- match(resST1_G2vsG1_df$genes, gene_ids$TAXID)
+resST1_G2vsG1_final <- transform(resST1_G2vsG1_df, genes = ifelse(!is.na(modify_ids), gene_ids$GENEID[modify_ids], genes))
+head(resST1_G2vsG1_final)
+#Exporting and visualizing the results:
+write.csv(as.data.frame(resST1_G2vsG1_final), "ST1/resST1_G2vsG1_final.csv")
+volcano_plot_ST1_G2vsG1 <- ggplot(resST1_G2vsG1_final, aes(x = log2FoldChange, y = -log10(padj), color = padj < 0.01)) +
+  geom_point(alpha = 0.6, size = 1.5) +
+  scale_color_manual(values = c("grey", "purple")) +
+  labs(title = "Volcano Plot ST1 G2vsG1",
+       x = "Log2 Fold Change",
+       y = "-Log10 Adjusted P-value",
+       color = "Significantly\nDifferentially Expressed") +
+  theme_minimal() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = "top")
+volcano_plot_ST1_G2vsG1 + geom_text_repel(data = subset(resST1_G2vsG1_final, padj < 0.05), aes(label = genes), size = 2)
+ggsave("volcano_plot_ST1_G2vsG1.jpg", path = "ST1")
+```
+From all results, the total number of DEGs between conditions can be identified, as well as specific comparisons. 
+
+Then, to find the differentially expressed functional traits (GIFTs) between groups or sampling times, the *distillR* package can be used again from the results obtained from these specific comparisons. For this step, prokka_ids and KO_ids can be extracted from the DRAM output of the MAGs annotation. Then, KO_ids are added to the counts table used as input for DESeq2 and specific DEGs are extracted using the prokka_id from each specific comparison. Then, from the resulting filtered table of counts per DEG per sample, the following script extracts specific KO_ids present in each sample: 
+```JS
+const fs = require('fs');
+const GLOBAL = {};
+function init() {
+    fs.readFile('./KO_comparison_X.csv', 'utf8', (error, data) => {
+        const allRows = data.split('\n');
+        const samplesID = allRows[0].split(';').slice(2, allRows.length);
+        for (let index = 0; index < samplesID.length; index++) {
+            const sampleID = samplesID[index];
+            GLOBAL[sampleID] = [];
+            for (let rowIndex = 1; rowIndex < allRows.length; rowIndex++) {
+                const rowValues = allRows[rowIndex].split(';');
+                const koId = rowValues[1];
+                const value = rowValues[2 + index];
+                if (value > 0) {
+                    GLOBAL[sampleID].push(koId);
+                }
+            }
+        }
+        let finalData = '';
+        Object.entries(GLOBAL).forEach(([key, values]) => {
+            console.log(key)
+            values.forEach((value) => {
+                finalData += `${key.trim()};${value}\n`;
+            });
+        });
+        fs.writeFile('./annotations_comparison_X.csv', finalData, () => {});
+    });
+}
+init();
+```
+The output from this script can be uploaded in R to follow the same script as in *5.4.* and obtain the differentially expressed GIFTs between specific conditions. 
+
 
 
 for file in *.csv; do
@@ -496,7 +592,7 @@ done
 
 ## Other analyses not included in the thesis
 
-### 6.1 Antibiotic Resistance and Virulence genes identification with ABRicate
+### Antibiotic Resistance and Virulence genes identification with ABRicate
 From assembled scaffolds obtained using metaSPAdes, ABRicate v1.0.1 is used to screen for antimicrobial resistance and virulence genes. The chosen databases are CARD, NCBI, and VFDB. Before launching ABRicate, *.fasta* extension must be changed to *.fa* to make files readable by ABRicate software.
 ```bash
 rename .fasta.fa .fa *.fasta
@@ -514,7 +610,7 @@ abricate --summary *.tab > vfdb_report.tab
 These reports are downloaded and analysed in Excel to generate a presence/absence matrix with the percentage of coverage. 
 
 
-### 6.2 Plasmid assembly and identification with metaplasmidSPAdes
+### Plasmid assembly and identification with metaplasmidSPAdes
 The chosen software for plasmid assembly from *.fastq* files is SPAdes version 3.15.5. It appeared to be more efficient than SCAPP, and web-based software like PLSDB did not support large metagenomics files. This is the script implemented with the following identification of plasmid scaffolds using BLAST software:
 ```bash
 conda activate assembly
