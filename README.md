@@ -83,7 +83,7 @@ dataset_bacteria <- microtable$new(otu_table = microeco_abu_bacteria, sample_tab
 dataset_bacteria_new
 dataset_bacteria_new$tidy_dataset()
 dataset_bacteria_new$sample_sums() %>%  range
-rarefaction <- trans_rarefy$new(dataset_bacteria, alphadiv = "Shannon", depth = c(0, 10, 50, 500, 2000, 4000, 6000, 8000))
+rarefaction <- trans_rarefy$new(dataset_bacteria, alphadiv = "Shannon", depth = c(0, 10, 50, 500, 2000, 4000, 6000, 8000, 665830))
 rarefaction$plot_rarefy(color_values = rep("grey", 279), show_point = TRUE, add_fitting = FALSE, show_legend = FALSE)
 # Calculation of taxa abundance and alpha and beta divesity
 dataset_bacteria$cal_abund()
