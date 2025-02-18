@@ -575,19 +575,17 @@ function init() {
 }
 init();
 ```
-The output from this script can be uploaded in R to follow the same script as in *5.4.* and obtain the differentially expressed GIFTs between specific conditions. 
+The output from this script can be uploaded in R to follow the same script as in *5.4.* and obtain the functional traits of the DEGs identified between specific conditions. 
 
 
-
+## 8. Expressed Resistome characterization
+For the expressed resistome, two different strategies can be followed. On one hand, the same analysis performed in section *3*, but using the trimmed metatranscriptomic reads as input. On the other hand, resistance-related terms can be filtered from the DESeq2 output results and further analysed. 
+```bash
 for file in *.csv; do
     name=$(echo $file | cut -d '_' -f1-2)
     grep -E "baseMean|resistan|antibiotic|antimicrobial|colistin|cillin|efflux|pump|drug|multi|lactam|cyclin|macrolid|midazol|penem|cepha|quinolon|mycin|polypeptid|sulfonamid|phenicol" ${name}_final.csv > ${name}_filtered.csv
 done
-
-## 8. Expressed Resistome characterization
-
-
-
+```
 
 
 ## Other analyses not included in the thesis
