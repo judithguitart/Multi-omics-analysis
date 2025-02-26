@@ -208,7 +208,7 @@ function init() {
                     globalCount++;
 
 		    if (globalCount === listOfFiles.length) {
-                        var finalMatrix = [];
+                        const finalMatrix = [];
                         globalAllGenes.sort((genA, genB) => genA.localeCompare(genB))
                         finalMatrix.push(['Name', ...globalAllGenes].join('\t'));
                         Object.entries(globalDictionaryResult).forEach(([key, value]) => {
