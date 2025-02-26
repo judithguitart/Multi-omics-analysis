@@ -149,29 +149,32 @@ library(Maaslin2)
 abundance <- t(abundance_table_bateria)
 abundance <- abundance[rownames(metadata2),]
 # Function to perform pre-filtering to keep only the feautures representing the 0.01% of the total abundance
-low.count.removal = function(data, # OTU count data frame of size n (sample) x p (OTU)
-                        percent=0.0001 # cutoff chosen) {
+# @param data - OTU count data frame of size n (sample) x p (OTU)
+# @param percent - cutoff chosen 
+low.count.removal = function(data, percent=0.0001) {
     keep.otu = which(colSums(data)*100/(sum(colSums(data))) > percent)
     data.filter = data[,keep.otu]
-    return(list(data.filter = data.filter, keep.otu = keep.otu)) 
+    return(list(data.filter = data.filter, keep.otu = keep.otu))
+}
 # Call the function then apply on the offset data 
 result.filter <- low.count.removal(abundance, percent=0.0001)
 input_data <- result.filter$data.filter
 # Example for G1 within sampling times
 input_metadataG1 <- subset(input_metadata, Group=='1')
 input_dataG1 <- input_data[rownames(input_metadataG1),]
-fit_data <- Maaslin2(input_dataG1, input_metadataG1, 'output_genus_groupG1',
-    fixed_effects = c('ST'),
-    reference=c("ST, V1"),
-    min_abundance=0,
-    #random_effects = c('ST'),
-    analysis_method="LM",
-    max_significance = 0.1,
-    min_prevalence=0.15,
-    cores = 3,
-    normalization = 'CLR',
-    transform = 'NONE',
-    standardize = FALSE)
+fit_data <- Maaslin2(input_dataG1,
+	input_metadataG1,
+	'output_genus_groupG1',
+    	fixed_effects = c('ST'),
+	reference = c("ST, V1"),
+    	min_abundance = 0,
+    	analysis_method = "LM",
+    	max_significance = 0.1,
+    	min_prevalence = 0.15,
+    	cores = 3,
+    	normalization = 'CLR',
+    	transform = 'NONE',
+    	standardize = FALSE)
 ```
 From *significant_results* files obtained from each group and each sampling time, matrixes are created in Excel. These matrixes are compared for significant differences observed between sampling times compared against all groups and between groups contrasting all sampling times. 
 
@@ -181,10 +184,10 @@ From trimmed metagenomic reads, Resfinder is used for resistome characterization
 ```bash
 conda activate resfinder
 for file in *; do
-          if [[ "$file" == *_fixed_1.fastq ]] ; then
-          name=$(echo $file | sed -e 's/_fixed_1.fastq//g')
-          echo $name
-          python3 -m resfinder -ifq ${name}_fixed_1.fastq ${name}_fixed_2.fastq -o /mnt/beegfs/scratch/lmigura/final_dataset/repeat_resfinder/${name}_repeat_resfinder -j /mnt/beegfs/scratch/lmigura/final_dataset/repeat_resfinder/${name}_resfinder.json -acq
+	if [[ "$file" == *_fixed_1.fastq ]] ; then
+	          name=$(echo $file | sed -e 's/_fixed_1.fastq//g')
+	          echo $name
+	          python3 -m resfinder -ifq ${name}_fixed_1.fastq ${name}_fixed_2.fastq -o ~/final_dataset/repeat_resfinder/${name}_repeat_resfinder -j ~/final_dataset/repeat_resfinder/${name}_resfinder.json -acq
 	fi
 done
 ```
@@ -194,15 +197,17 @@ const fs = require('fs');
 const globalDictionaryResult = {};
 const globalAllGenes = [];
 let globalCount = 0;
+
 function init() {
     fs.readdir('./json_files/', (err, listOfFiles) => {
         for (file of listOfFiles) {
             if (file.endsWith('.json')) {
-                var fileWithoutSufix = file.replace('.json', '');
-                console.log('file to execute ', fileWithoutSufix);
+                const fileWithoutSufix = file.replace('.json', '');
+
                 readFileAndWriteOutput(fileWithoutSufix, () => {
                     globalCount++;
-                    if (globalCount === listOfFiles.length) {
+
+		    if (globalCount === listOfFiles.length) {
                         var finalMatrix = [];
                         globalAllGenes.sort((genA, genB) => genA.localeCompare(genB))
                         finalMatrix.push(['Name', ...globalAllGenes].join('\t'));
@@ -224,27 +229,30 @@ function init() {
         }
     })
 }
+
 function writeInFile(outputFileName, text) {
     fs.open(outputFileName, "a", (err, fd)=>{
         if (err){
-            console.log('Error writing in' + outputFileName + '\n' + err.message);
+            console.error('Error writing in' + outputFileName + '\n' + err.message);
             return;
         }
         fs.write(fd, text, (err) => {
             if (err) {
-                console.log('Error writing in' + outputFileName + '\n' + err.message)
+                console.error('Error writing in' + outputFileName + '\n' + err.message)
             }
         })
     })
 }
+
 function readFileAndWriteOutput(inputFilename, cb) {
     fs.readFile('./json_files/' + inputFilename + '.json', 'utf8', (error, data) => {
         if (error) {
-            console.log(error);
+            console.error(error);
             return;
         }
-        var fileID = inputFilename.replace('_resfinder', '');
-        var parsedJSON = JSON.parse(data).seq_regions;
+
+        const fileID = inputFilename.replace('_resfinder', '');
+        const parsedJSON = JSON.parse(data).seq_regions;
 
         globalDictionaryResult[fileID] = {};
     
@@ -273,7 +281,10 @@ The metaspades.py script from SPAdes version 3.15.5 is used to assembly fastq fi
 ```bash
 conda activate assembly
 metaspades.py --only-assembler -1 ${name}_R1_kneaddata_paired_1.fastq -2 ${name}_R1_kneaddata_paired_2.fastq -o assembly/${name}_assembly
-for i in `dir *_assembly/scaffolds.fasta`; do name=$(echo $i | sed "s/assembly\///"); cp $i /$PATH/scaffolds/$name; done
+for i in `dir *_assembly/scaffolds.fasta`; do
+	name=$(echo $i | sed "s/assembly\///");
+	cp $i /$PATH/scaffolds/$name;
+done
 ```
 After running all assemblies, the for loop modifies each *scaffolds.fasta* file with the name id and copies them to a new directory containing all scaffolds. In this directory all fasta files are checked for quality with metaQUAST using the following script:
 ```bash
@@ -368,15 +379,15 @@ library(Rtsne)
 library(ggplot2)
 library(viridis)
 
-#Load the Annotation table
+# Load the Annotation table
 SMGAtoGIFTs <- MAGs_KO_filtered %>%
   select(GENE,fasta,ko_id)
 GIFTs <- distill(SMGAtoGIFTs,GIFT_db,genomecol=2,annotcol=3)
-#Aggregate bundle-level GIFTs into the compound level
+# Aggregate bundle-level GIFTs into the compound level
 GIFTs_elements <- to.elements(GIFTs,GIFT_db)
-#Aggregate element-level GIFTs into the function level
+# Aggregate element-level GIFTs into the function level
 GIFTs_functions <- to.functions(GIFTs_elements,GIFT_db)
-#Aggregate function-level GIFTs into overall Biosynthesis, Degradation and Structural GIFTs
+# Aggregate function-level GIFTs into overall Biosynthesis, Degradation and Structural GIFTs
 GIFTs_domains <- to.domains(GIFTs_functions,GIFT_db)
 avg_mci <- rowMeans(GIFTs_functions) %>%
   enframe(name = "Genome",value = "MCI")
@@ -384,7 +395,7 @@ avg_mci <- rowMeans(GIFTs_functions) %>%
 Metadata <- metadata %>%
   select(Genome,phylum,order,tax) %>%
   distinct(Genome,.keep_all = T)
-#Join the tables
+# Join the tables
 avg_mci_Meta <- avg_mci %>%
   left_join(Metadata,by="Genome")
 
@@ -429,9 +440,9 @@ ARGs from final MAGs are also analysed with Resfinder v4.3.0:
 conda activate resfinder
 for file in *; do
 	if [[ "$file" == *.fa ]] ; then
-    name=$(echo $file | sed -e 's/.fa//g')
-    echo $name 
-		python3 -m resfinder -ifa ${name}.fa -o /mnt/beegfs/scratch/lmigura/metatranscriptomics/bins_annotation/dereplicated_bins/resfinder_bins/${name}_resfinder -j /mnt/beegfs/scratch/lmigura/metatranscriptomics/bins_annotation/dereplicated_bins/resfinder_bins/${name}_resfinder.json -acq
+    		name=$(echo $file | sed -e 's/.fa//g')
+    		echo $name 
+		python3 -m resfinder -ifa ${name}.fa -o ~/metatranscriptomics/bins_annotation/dereplicated_bins/resfinder_bins/${name}_resfinder -j ~/metatranscriptomics/bins_annotation/dereplicated_bins/resfinder_bins/${name}_resfinder.json -acq
 	fi
 done
 ```
@@ -445,7 +456,7 @@ for file in *; do
 	if [[ "$file" == *_1P.fastq.gz ]] ; then
 		name=$(echo $file | sed -e 's/_1P.fastq.gz//g')
 		echo $name
-		kneaddata --remove-intermediate-output -t 16 --input ${name}_1P.fastq.gz --input ${name}_2P.fastq.gz --output $PATH/kneaddata_output --reference-db $PATH/contaminant_genomes/ --bowtie2-options "--very-sensitive --dovetail" --trimmomatic /.conda/envs/kneaddata/share/trimmomatic-0.39-2/ --trimmomatic-options "ILLUMINACLIP:adaptors.fa:2:30:10 SLIDINGWINDOW:4:20 MINLEN:50"
+		kneaddata --remove-intermediate-output -t 16 --input ${name}_1P.fastq.gz --input ${name}_2P.fastq.gz --output $PATH/kneaddata_output --reference-db $PATH/contaminant_genomes/ --bowtie2-options "--very-sensitive --dovetail" --trimmomatic ~/.conda/envs/kneaddata/share/trimmomatic-0.39-2/ --trimmomatic-options "ILLUMINACLIP:adaptors.fa:2:30:10 SLIDINGWINDOW:4:20 MINLEN:50"
 	fi
 done
 kneaddata_read_count_table --input $PATH/kneaddata_output/ --output kneaddata_read_count_table.tsv
@@ -473,6 +484,8 @@ for file in *; do
 		name=$(echo $file | sed -e 's/_1P.fastq.gz//g')
 		echo $name
 		kallisto quant -i kallisto_index.indx --plaintext ${name}_1P.fastq.gz ${name}_2P.fastq.gz -t 32 -o ${name}.kallisto_index.indx.dir
+	fi
+done
 # Join abundance kallisto tables from all samples and extract tpms (sequence of 5,10,15,20...) or counts (sequence of 4,9,14,19...). Example for tpms: 
 paste *.kallisto_index.indx.dir/abundance.tsv | cut -f 1,2,5,10,15,20,25,30 > transcript_tpms_all_samples.tsv
 ls -1 */abundance.tsv | perl -ne 'chomp $_; if ($_ =~ /(\S+)\/abundance\.tsv/){print "\t$1"}' | perl -ne 'print "target_id\tlength$_\n"' > header.tsv
@@ -547,6 +560,7 @@ Then, to find the differentially expressed functional traits (GIFTs) between gro
 ```JS
 const fs = require('fs');
 const GLOBAL = {};
+
 function init() {
     fs.readFile('./KO_comparison_X.csv', 'utf8', (error, data) => {
         const allRows = data.split('\n');
@@ -558,11 +572,13 @@ function init() {
                 const rowValues = allRows[rowIndex].split(';');
                 const koId = rowValues[1];
                 const value = rowValues[2 + index];
+
                 if (value > 0) {
                     GLOBAL[sampleID].push(koId);
                 }
             }
         }
+
         let finalData = '';
         Object.entries(GLOBAL).forEach(([key, values]) => {
             console.log(key)
@@ -570,9 +586,11 @@ function init() {
                 finalData += `${key.trim()};${value}\n`;
             });
         });
+
         fs.writeFile('./annotations_comparison_X.csv', finalData, () => {});
     });
 }
+
 init();
 ```
 The output from this script can be uploaded in R to follow the same script as in *5.4.* and obtain the functional traits of the DEGs identified between specific conditions. 
