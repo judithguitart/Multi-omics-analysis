@@ -139,7 +139,6 @@ kruskal.test(G1$Shannon ~ G1$ST) # example with G1
 # Wilcoxon non-parametric t-test per group or ST
 pairwise.wilcox.test(x = G1$Shannon, g= G1$ST, p.adjust.method = "BH")
 ggplot(G1, aes(x = ST, y = Shannon)) + geom_boxplot() + ylim(3.30,4.30) 
-# Further analysis: NMDS plot from ANOSIM test and PCA plots from beta-diversity
 ```
 
 ### 2.4 Multivariate Association Analysis with Maaslin2
