@@ -19,9 +19,10 @@ multiqc *.zip
 After initial analysis of read quality, sequence counts, duplication levels, and adapter content, reads are host decontaminated using Bowtie2 v2.4.4 and trimmed using Trimmomatic v0.39.2. 
 First, a Bowtie2 index must be created including the potential contaminant genomes. In this case, *Sus scrofa* (GCA_000003025.6_Sscrofa11.1) and *PhiX* bacteriophage genomes are downloaded and concatenated for index generation:
 ```bash
-$PATH = /scratch/jguitar/raw_data/all_files/
+$PATH = ~/raw_data/all_files/
 conda activate kneaddata
-cat GCA_000003025.6_Sscrofa11.1.fasta phix.fasta > sscrofa11.1_phix.fasta # in a new directory named /contaminant_genomes/
+# Move output file into a new "contaminant_genomes/" folder
+cat GCA_000003025.6_Sscrofa11.1.fasta phix.fasta > contaminant_genomes/sscrofa11.1_phix.fasta 
 bowtie2-build sscrofa11.1_phix.fasta > sscrofa11.1_phix.index
 ```
 Kneaddata software is used for host decontamination and trimming of low quality and adapter sequences with the following options:
@@ -32,7 +33,7 @@ kneaddata --remove-intermediate-output -t 16
           --input {$name}_R1.fastq.gz --input {$name}_R2.fastq.gz --output /$PATH/kneaddata_output 
           --reference-db /$PATH/contaminant_genomes/Sscrofa11.1_phiX.index 
           --bowtie2-options "--very-sensitive --dovetail" 
-          --trimmomatic /mnt/beegfs/scratch/jguitar/.conda/envs/kneaddata/share/trimmomatic-0.39-2/ 
+          --trimmomatic ~/.conda/envs/kneaddata/share/trimmomatic-0.39-2/ 
           --trimmomatic-options "ILLUMINACLIP:adaptors.fa:2:30:10 SLIDINGWINDOW:4:20 MINLEN:50"
 kneaddata_read_count_table --input /$PATH/kneaddata_output/ --output kneaddata_read_counts.txt
 ```
@@ -52,7 +53,7 @@ multiqc *.zip
 ## 2. Taxonomic classification and microbial diversity analyses
 
 ### 2.1 Taxonomic Classification of Reads
-Kraken2 v2.1.2 classifier is used for read taxonomic classification using the Maxikraken2 database from the trimmed fastq reads. This process is run twice to obtain output in MPA style and kraken report style:
+Kraken2 v2.1.2 classifier is used for read taxonomic classification using the Maxikraken2 database from the trimmed fastq reads. This process is run twice to obtain output in MPA style, by adding the `--use-mpa-style` flag, and kraken report style:
 ```bash
 conda activate kraken2
 cd /$PATH/kneaddata_output/kneaddata_paired/
