@@ -22,7 +22,7 @@ First, a Bowtie2 index must be created including the potential contaminant genom
 $PATH = ~/raw_data/all_files/
 conda activate kneaddata
 # Move output file into a new "contaminant_genomes/" folder
-cat GCA_000003025.6_Sscrofa11.1.fasta phix.fasta > contaminant_genomes/sscrofa11.1_phix.fasta 
+cat GCA_000003025.6_Sscrofa11.1.fasta phix.fasta contaminant_genomes/sscrofa11.1_phix.fasta 
 bowtie2-build sscrofa11.1_phix.fasta > sscrofa11.1_phix.index
 ```
 Kneaddata software is used for host decontamination and trimming of low quality and adapter sequences with the following options:
