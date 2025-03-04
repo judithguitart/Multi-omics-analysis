@@ -30,7 +30,7 @@ Kneaddata software is used for host decontamination and trimming of low quality 
 conda activate kneaddata
 name = $(echo $file | sed -e 's/_1.fastq.gz//g')
 kneaddata --remove-intermediate-output -t 16 
-          --input {$name}_R1.fastq.gz --input {$name}_R2.fastq.gz --output /$PATH/kneaddata_output 
+          --input1 ${name}_R1.fastq.gz --input2 ${name}_R2.fastq.gz --output /$PATH/kneaddata_output 
           --reference-db /$PATH/contaminant_genomes/Sscrofa11.1_phiX.index 
           --bowtie2-options "--very-sensitive --dovetail" 
           --trimmomatic ~/.conda/envs/kneaddata/share/trimmomatic-0.39-2/ 
