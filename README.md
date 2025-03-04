@@ -28,7 +28,7 @@ bowtie2-build sscrofa11.1_phix.fasta > sscrofa11.1_phix.index
 Kneaddata software is used for host decontamination and trimming of low quality and adapter sequences with the following options:
 ```bash
 conda activate kneaddata
-name = $(echo $file | sed -e 's/_1.fastq.gz//g')
+name=$(echo $file | sed -e 's/_1.fastq.gz//g')
 kneaddata --remove-intermediate-output -t 16 
           --input1 ${name}_R1.fastq.gz --input2 ${name}_R2.fastq.gz --output /$PATH/kneaddata_output 
           --reference-db /$PATH/contaminant_genomes/Sscrofa11.1_phiX.index 
