@@ -66,6 +66,8 @@ kraken2 --db /prod/apps/kraken/maxikraken2_1903_140GB/ --confidence 0.01 --threa
 kraken2 --db /prod/apps/kraken/maxikraken2_1903_140GB/ --confidence 0.01 --threads 16 --use-names 
         --report kraken_reports/${name}_report.txt --report-zero-counts --output kraken_outputs/${name}_output.txt 
         --paired ${name}_R1_kneaddata_paired_1.fastq ${name}_R1_kneaddata_paired_2.fastq --unclassified-out unclassified/$name#.fq
+cd kraken_reports_mpa
+python combine_mpa.py -i {all_mpa_reports_separated_by_spaces} -o all_mpa_reports.txt  #from KrakenTools
 ```
 From run .err file, percentages of sequences classified and unclassified are extracted to analyse Kraken2 results.
 
