@@ -473,6 +473,8 @@ for file in *; do
 		name=$(echo $file | sed -e 's/_1P.fastq.gz//g')
 		echo $name
 		sortmerna --workdir kneaddata_output/ --out2 --paired_out --fastx --other /out/$input.noSalmon.noRNA --threads 12 --ref rRNA_databases/silva-bac-16s-id90.fasta --ref rRNA_databases/silva-arc-16s-id95.fasta --ref rRNA_databases/silva-bac-23s-id98.fasta --ref rRNA_databases/silva-arc-23s-id98.fasta --ref rRNA_databases/silva-euk-18s-id95.fasta --ref rRNA_databases/silva-euk-28s-id98.fasta --ref rRNA_databases/rfam-5.8s-database-id98.fasta --ref rRNA_databases/rfam-5s-database-id98.fasta --reads ${name}_1.fastq.gz --reads ${name}_2.fastq.gz
+	fi
+done
 ```
 
 
